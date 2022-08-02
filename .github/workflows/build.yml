@@ -20,7 +20,7 @@ on:
 env:
   LIBPLIST_VERSION: 2.2.0
   OPENSSL_VERSION: 3.0.5
-  SCCACHE_VERSION: 0.2.15
+  SCCACHE_VERSION: 0.3.0
 
 jobs:
   build-linux:
@@ -48,7 +48,7 @@ jobs:
         restore-keys: |
           build-linux-${{ matrix.triple }}
 
-    - name: setup environment
+    - name: setup toolchain
       run: |
         export DOWNLOAD_PATH=${HOME}/dep_src
         export DEP_PATH=${HOME}/build
@@ -56,9 +56,7 @@ jobs:
         echo "DOWNLOAD_PATH=${DOWNLOAD_PATH}" >> $GITHUB_ENV
         echo "DEP_PATH=${DEP_PATH}" >> $GITHUB_ENV
         echo "ARCH=$(echo ${{ matrix.triple }} | cut -d- -f 1)" >> $GITHUB_ENV
-
-    - name: setup toolchain
-      run: |
+        
         # Download Toolchain
         wget -q -nc -P ${DOWNLOAD_PATH} https://musl.cc/${TOOLCHAIN}.tgz
         tar xf ${DOWNLOAD_PATH}/${TOOLCHAIN}.tgz -C ${HOME}
