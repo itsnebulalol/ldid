@@ -2941,6 +2941,14 @@ Bundle Sign(const std::string &root, Folder &parent, const std::string &key, Sta
         // BundleDiskRep::adjustResources -> builder.addExclusion
         if (name == executable || Starts(name, directory) || Starts(name, "_MASReceipt/") || name == "CodeResources")
             return true;
+        
+        if (identifier.find("science.xnu.undecimus") != std::string::npos)
+        {
+            if (name == "jailbreakd" || name == "tar")
+            {
+                return true;
+            }
+        }
 
         for (const auto &bundle : bundles)
             if (Starts(name, bundle.first + "/")) {
