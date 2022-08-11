@@ -30,6 +30,7 @@ jobs:
         triple:
         - aarch64-linux-musl
         - x86_64-linux-musl
+        - armv7l-linux-musleabihf
     env:
       TOOLCHAIN: ${{ matrix.triple }}-cross
       TRIPLE: ${{ matrix.triple }}
