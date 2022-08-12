@@ -50,7 +50,7 @@ jobs:
             apk update
             apk add libplist-dev libplist-static git g++ make pkgconf openssl-dev openssl-libs-static binutils
           run: |
-            make -j$(nproc) LDFLAGS="-static -static-libstdc++ -Os -fPIC -fno-pie -no-pie -static -Wl,--gc-sections -Wl>
+            make -j$(nproc) LDFLAGS="-static -static-libstdc++ -Os -fPIC -fno-pie -no-pie -static -Wl,--gc-sections -Wl
             strip ldid
             mv ldid "/artifacts/${artifact_name}"
             echo "Produced artifact at /artifacts/${artifact_name}"
