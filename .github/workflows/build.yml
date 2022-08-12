@@ -23,6 +23,42 @@ env:
   SCCACHE_VERSION: 0.3.0
 
 jobs:
+  build_linux_armv7:
+    runs-on: ubuntu-22.04
+    name: 'Build on ${{ matrix.distro }} ${{ matrix.arch }}'
+    strategy:
+      matrix:
+    include:
+          - arch: armv7
+            distro: alpine_latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: uraimo/run-on-arch-action@v2
+        name: Build artifact
+        id: build
+        with:
+          arch: ${{ matrix.arch }}
+          distro: ${{ matrix.distro }}
+          githubToken: ${{ github.token }}
+          setup: |
+            mkdir -p "${PWD}/artifacts"
+          dockerRunArgs: |
+            --volume "${PWD}/artifacts:/artifacts"
+          env: |
+            artifact_name: ldid_linux_${{ matrix.arch }}
+          install: |
+            apk update
+            apk add libplist-dev libplist-static git g++ make pkgconf openssl-dev openssl-libs-static binutils
+          run: |
+            make -j$(nproc) LDFLAGS="-static -static-libstdc++ -Os -fPIC -fno-pie -no-pie -static -Wl,--gc-sections -Wl>
+            strip ldid
+            mv ldid "/artifacts/${artifact_name}"
+            echo "Produced artifact at /artifacts/${artifact_name}"
+      - uses: actions/upload-artifact@v3
+        with:
+          name: ldid_linux_${{ matrix.arch }}
+          path: artifacts/ldid_linux_${{ matrix.arch }}
+          
   build-linux:
     runs-on: ubuntu-latest
     strategy:
@@ -30,7 +66,6 @@ jobs:
         triple:
         - aarch64-linux-musl
         - x86_64-linux-musl
-        - armv7l-linux-musleabihf
     env:
       TOOLCHAIN: ${{ matrix.triple }}-cross
       TRIPLE: ${{ matrix.triple }}
