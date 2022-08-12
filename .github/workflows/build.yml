@@ -28,7 +28,7 @@ jobs:
     name: 'Build on ${{ matrix.distro }} ${{ matrix.arch }}'
     strategy:
       matrix:
-    include:
+        include:
           - arch: armv7
             distro: alpine_latest
     steps:
