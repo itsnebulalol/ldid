@@ -70,6 +70,15 @@ jobs:
           tar xf ${DOWNLOAD_PATH}/sccache-v${SCCACHE_VERSION}-x86_64-unknown-linux-musl.tar.gz -C ${HOME}
           chmod +x ${HOME}/sccache-v${SCCACHE_VERSION}-x86_64-unknown-linux-musl/sccache
           mv ${HOME}/sccache-v${SCCACHE_VERSION}-x86_64-unknown-linux-musl/sccache ${HOME}/${TOOLCHAIN}/bin/sccache
+
+          echo "CC=sccache ${PLATFORM}-gcc" >> $GITHUB_ENV
+          echo "CXX=sccache ${PLATFORM}-g++" >> $GITHUB_ENV
+          echo "AR=${PLATFORM}-gcc-ar" >> $GITHUB_ENV
+          echo "NM=${PLATFORM}-gcc-nm" >> $GITHUB_ENV
+          echo "RANLIB=${PLATFORM}-gcc-ranlib" >> $GITHUB_ENV
+          echo "CFLAGS=-Os -fPIC -fno-pie -no-pie -static -static-libstdc++ -flto -ffunction-sections -fdata-sections" >> $GITHUB_ENV
+          echo "CXXFLAGS=-Os -fPIC -fno-pie -no-pie -static -static-libstdc++ -flto -ffunction-sections -fdata-sections" >> $GITHUB_ENV
+          echo "LDFLAGS=-Os -fPIC -fno-pie -no-pie -static -static-libstdc++ -Wl,--gc-sections -Wl,-strip-all -flto -ffunction-sections -fdata-sections" >> $GITHUB_ENV    
           echo "${HOME}/${TOOLCHAIN}/bin" >> $GITHUB_PATH
       - uses: actions/checkout@v3
         with:
@@ -81,9 +90,7 @@ jobs:
         run: |
           cd openssl
           ./config --banner=Configured --strict-warnings -static enable-fips no-module enable-ktls no-zlib \
-             no-hw no-async no-comp no-idea no-mdc2 no-rc5 no-ec2m no-sm2 no-sm4 no-ssl3 no-seed no-weak-ssl-ciphers \
-             --cross-compile-prefix=${PLATFORM}- \
-             ${TARGET} -Wa,--noexecstack
+             no-hw no-async no-comp no-idea no-mdc2 no-rc5 no-ec2m no-sm2 no-sm4 no-ssl3 no-seed no-weak-ssl-ciphers ${TARGET} -Wa,--noexecstack
           make -j$(nproc) build_generated libcrypto.a
           echo "LIBCRYPTO_INCLUDES=-I${GITHUB_WORKSPACE}/openssl/include" >> $GITHUB_ENV
           echo "LIBCRYPTO_LIBS=${GITHUB_WORKSPACE}/openssl/libcrypto.a" >> $GITHUB_ENV
@@ -92,21 +99,11 @@ jobs:
           repository: libimobiledevice/libplist
           token: '${{ secrets.GITHUB_TOKEN }}'
           path: libplist
-      - name: Export Environment Variables
-        run: |
-          echo "CC=sccache ${PLATFORM}-gcc" >> $GITHUB_ENV
-          echo "CXX=sccache ${PLATFORM}-g++" >> $GITHUB_ENV
-          echo "AR=${PLATFORM}-gcc-ar" >> $GITHUB_ENV
-          echo "NM=${PLATFORM}-gcc-nm" >> $GITHUB_ENV
-          echo "RANLIB=${PLATFORM}-gcc-ranlib" >> $GITHUB_ENV
-          echo "CFLAGS=-Os -fPIC -fno-pie -no-pie -static -static-libstdc++ -flto -ffunction-sections -fdata-sections" >> $GITHUB_ENV
-          echo "CXXFLAGS=-Os -fPIC -fno-pie -no-pie -static -static-libstdc++ -flto -ffunction-sections -fdata-sections" >> $GITHUB_ENV
-          echo "LDFLAGS=-Os -fPIC -fno-pie -no-pie -static -static-libstdc++ -Wl,--gc-sections -Wl,-strip-all -flto -ffunction-sections -fdata-sections" >> $GITHUB_ENV
       - name: Build LibPlist
         run: |
           cd libplist
           ./autogen.sh --host=${PLATFORM} --prefix=/usr --without-cython --disable-shared
-          CC=${CC} CXX=${CXX} make -j$(nproc)
+          make -j$(nproc)
           echo "LIBPLIST_INCLUDES=-I${GITHUB_WORKSPACE}/libplist/include" >> $GITHUB_ENV
           echo "LIBPLIST_LIBS=${GITHUB_WORKSPACE}/libplist/src/.libs/libplist-2.0.a" >> $GITHUB_ENV
       - name: Build Ldid
@@ -164,7 +161,7 @@ jobs:
           echo "HOST_ARCH=${ARCH}" >> $GITHUB_ENV
         fi
 
-    - name: setup toolchain
+    - name: Setup sccache
       run: |
         brew install libtool autoconf automake
 
@@ -186,7 +183,7 @@ jobs:
         token: '${{ secrets.GITHUB_TOKEN }}'
         path: libplist
         
-    - name: build libplist
+    - name: Build LibPlist
       run: |
         cd libplist
         ./autogen.sh --host=${HOST_ARCH}-apple-darwin --without-cython --disable-shared
@@ -201,7 +198,7 @@ jobs:
         token: '${{ secrets.GITHUB_TOKEN }}'
         path: openssl
          
-    - name: build openssl
+    - name: Build OpenSSL
       run: |
         cd openssl
         ./config --banner=Configured --strict-warnings -static enable-fips no-module enable-ktls no-zlib \
@@ -211,7 +208,7 @@ jobs:
         echo "LIBCRYPTO_INCLUDES=-I${GITHUB_WORKSPACE}/openssl/include" >> $GITHUB_ENV
         echo "LIBCRYPTO_LIBS=${GITHUB_WORKSPACE}/openssl/libcrypto.a" >> $GITHUB_ENV
 
-    - name: build
+    - name: Build Ldid
       run: |
         make -j$(sysctl -n hw.ncpu) \
           CXXFLAGS="-flto=thin ${CXXFLAGS}" \
