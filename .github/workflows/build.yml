@@ -116,22 +116,17 @@ jobs:
         run: | 
           make -j$(nproc)
           ${PLATFORM}-strip ldid
-      
-      - uses: actions/upload-artifact@v1
+          mv ldid ldid_linux_${{ env.ARCH }}
+
+      - uses: actions/upload-artifact@v3
         with:
-          name: 'ldid_linux_${{ env.ARCH }}'
-          path: ldid
+          path: ldid_linux_${{ env.ARCH }}
       
-      - name: Upload Release Asset Linux
-        uses: actions/upload-release-asset@v1
-        if: '${{ github.event_name == ''release'' }}'
-        env:
-          GITHUB_TOKEN: '${{ secrets.GITHUB_TOKEN }}'
+      - name: Release
+        uses: softprops/action-gh-release@v1
+        if: startsWith(github.ref, 'refs/tags/')
         with:
-          upload_url: '${{ github.event.release.upload_url }}'
-          asset_path: ldid
-          asset_name: 'ldid_linux_${{ env.ARCH }}'
-          asset_content_type: application/octet-stream
+          files: ldid_macos_${{ matrix.arch }}
   
   build-macos:
     runs-on: macos-11
@@ -217,21 +212,17 @@ jobs:
           CXXFLAGS="-flto=thin ${CXXFLAGS}" \
           LDFLAGS="-flto=thin"
         strip ldid
-    - uses: actions/upload-artifact@v1
-      with:
-        name: ldid_macos_${{ matrix.arch }}
-        path: ldid
+        mv ldid ldid_macos_${{ matrix.arch }}
 
-    - name: Upload Release Asset Linux
-      uses: actions/upload-release-asset@v1
-      if: ${{ github.event_name == 'release' }}
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    - uses: actions/upload-artifact@v3
       with:
-        upload_url: ${{ github.event.release.upload_url }}
-        asset_path: ldid
-        asset_name: ldid_macos_${{ matrix.arch }}
-        asset_content_type: application/octet-stream
+        path: ldid_macos_${{ matrix.arch }}
+
+    - name: Release
+      uses: softprops/action-gh-release@v1
+      if: startsWith(github.ref, 'refs/tags/')
+      with:
+        files: ldid_macos_${{ matrix.arch }}
        
   build-windows:
     runs-on: ubuntu-latest
@@ -355,19 +346,17 @@ jobs:
           i686-w64-mingw32-g++-win32 -c -static -static-libgcc -static-libstdc++ -lpthread ${LIBPLIST_INCLUDES} ${LIBCRYPTO_INCLUDES} ${LIBTRE_INCLUDES} ${LIBMMAN_INCLUDES} -I. -DLDID_VERSION=\"2.1.5-procursus5\" ldid.cpp -o ldid.cpp.o
           i686-w64-mingw32-g++-win32 -o ldid.exe ldid.cpp.o ${LIBCRYPTO_LIBS} ${LIBPLIST_LIBS} ${LIBTRE_LIBS} ${LIBMMAN_LIBS} -static -static-libgcc -static-libstdc++ -lpthread -lws2_32 -lcrypt32 -ladvapi32 -lgdi32 -luser32 -lmingw32
           i686-w64-mingw32-strip ldid.exe
+          mv ldid.exe ldid_win32_x86_64.exe
       
       - uses: actions/upload-artifact@v3
         with:
           name: ldid_win32_x86_64
-          path: ldid.exe
+          path: ldid_win32_x86_64.exe
           
-      - name: Upload Release Asset Windows
-        uses: actions/upload-release-asset@v1
-        if: ${{ github.event_name == 'release' }}
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Release
+        uses: softprops/action-gh-release@v1
+        if: startsWith(github.ref, 'refs/tags/')
         with:
-          upload_url: ${{ github.event.release.upload_url }}
-          asset_path: ldid.exe
-          asset_name: ldid_win32_x86_64
-          asset_content_type: application/octet-stream
+          files: ldid_win32_x86_64.exe
+
+
