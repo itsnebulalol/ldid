@@ -127,7 +127,7 @@ jobs:
         uses: softprops/action-gh-release@v1
         if: startsWith(github.ref, 'refs/tags/')
         with:
-          files: ldid_macos_${{ matrix.arch }}
+          files: ldid_linux_${{ matrix.arch }}
   
   build-macos:
     runs-on: macos-11
