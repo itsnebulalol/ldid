@@ -120,6 +120,7 @@ jobs:
 
       - uses: actions/upload-artifact@v3
         with:
+          name: ldid_linux_${{ env.ARCH }}
           path: ldid_linux_${{ env.ARCH }}
       
       - name: Release
@@ -216,6 +217,7 @@ jobs:
 
     - uses: actions/upload-artifact@v3
       with:
+        name: ldid_macos_${{ matrix.arch }}
         path: ldid_macos_${{ matrix.arch }}
 
     - name: Release
