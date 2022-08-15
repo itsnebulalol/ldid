@@ -1805,7 +1805,7 @@ class Stuff {
     }
 };
 
-// xina fix;
+// xina fix;
 struct SEQUENCE_hash_sha1 {
     uint8_t SEQUENCE[2] = {0x30, 0x1d}; // size
     uint8_t OBJECT_IDENTIFIER[7] = {0x06, 0x05, 0x2B, 0x0E, 0x03, 0x02, 0x1A}; // OBJECT IDENTIFIER 1.3.14.3.2.26 sha1 (OIW)
@@ -1856,13 +1856,13 @@ class Signature {
         ASN1_OBJECT *obj2 = OBJ_txt2obj("1.2.840.113635.100.9.2", 1);
         X509_ATTRIBUTE_set1_object(attribute, obj2);
         if (alternateCDSHA1.size() != 0) {
-            // xina fix;
+            // xina fix;
             SEQUENCE_hash_sha1 seq1;
             memcpy((void *)seq1.hash, (void *)alternateCDSHA1.data(), alternateCDSHA1.size());
             X509_ATTRIBUTE_set1_data(attribute, V_ASN1_SEQUENCE, &seq1, sizeof(seq1));
         }
         if (alternateCDSHA256.size() != 0) {
-            // xina fix;
+            // xina fix;
             SEQUENCE_hash_sha256 seq256;
             memcpy((void *)seq256.hash, (void *)alternateCDSHA256.data(), alternateCDSHA256.size());
             X509_ATTRIBUTE_set1_data(attribute, V_ASN1_SEQUENCE, &seq256, sizeof(seq256));
@@ -2036,10 +2036,13 @@ static std::string Temporary(std::filebuf &file, const Split &split) {
 static void Commit(const std::string &path, const std::string &temp) {
     struct stat info;
     if (_syscall(stat(path.c_str(), &info), ENOENT) == 0) {
-#ifndef __WIN32__
+
+#if defined WIN32 || _MSC_VER || __MINGW32__
+        _syscall(chmod(temp.c_str(), info.st_mode));
+#else
+        _syscall(chmod(temp.c_str(), info.st_mode));
         _syscall(chown(temp.c_str(), info.st_uid, info.st_gid));
 #endif
-        _syscall(chmod(temp.c_str(), info.st_mode));
     }
 
     _syscall(rename(temp.c_str(), path.c_str()));
@@ -3557,6 +3560,9 @@ int main(int argc, char *argv[]) {
             }
 
             if (flag_h) {
+                #if defined WIN32 || _MSC_VER || __MINGW32__
+                    #define realpath(N,R) _fullpath((R),(N),PATH_MAX)
+                #endif
                 char *buf = _syscall(realpath(file.c_str(), NULL));
                 printf("Executable=%s\n", buf);
                 free(buf);

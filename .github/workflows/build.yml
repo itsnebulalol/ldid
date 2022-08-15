@@ -52,6 +52,7 @@ jobs:
           key: 'build-linux-${{ env.PLATFORM }}-${{ env.GITHUB_SHA }}'
           restore-keys: |
             build-linux-${{ env.PLATFORM }}
+      
       - name: Setup Environment
         run: |
           export DOWNLOAD_PATH=${HOME}/dep_src
@@ -60,6 +61,7 @@ jobs:
           echo "DOWNLOAD_PATH=${DOWNLOAD_PATH}" >> $GITHUB_ENV
           echo "DEP_PATH=${DEP_PATH}" >> $GITHUB_ENV
           echo "ARCH=$(echo ${PLATFORM} | cut -d- -f 1)" >> $GITHUB_ENV
+      
       - name: Setup Toolchain
         run: |
           # Download Toolchain
@@ -70,7 +72,6 @@ jobs:
           tar xf ${DOWNLOAD_PATH}/sccache-v${SCCACHE_VERSION}-x86_64-unknown-linux-musl.tar.gz -C ${HOME}
           chmod +x ${HOME}/sccache-v${SCCACHE_VERSION}-x86_64-unknown-linux-musl/sccache
           mv ${HOME}/sccache-v${SCCACHE_VERSION}-x86_64-unknown-linux-musl/sccache ${HOME}/${TOOLCHAIN}/bin/sccache
-
           echo "CC=sccache ${PLATFORM}-gcc" >> $GITHUB_ENV
           echo "CXX=sccache ${PLATFORM}-g++" >> $GITHUB_ENV
           echo "AR=${PLATFORM}-gcc-ar" >> $GITHUB_ENV
@@ -80,12 +81,14 @@ jobs:
           echo "CXXFLAGS=-Os -fPIC -fno-pie -no-pie -static -static-libstdc++ -flto -ffunction-sections -fdata-sections" >> $GITHUB_ENV
           echo "LDFLAGS=-Os -fPIC -fno-pie -no-pie -static -static-libstdc++ -Wl,--gc-sections -Wl,-strip-all -flto -ffunction-sections -fdata-sections" >> $GITHUB_ENV    
           echo "${HOME}/${TOOLCHAIN}/bin" >> $GITHUB_PATH
+      
       - uses: actions/checkout@v3
         with:
           repository: openssl/openssl
           ref: openssl-${{ env.OPENSSL_VERSION }}
           token: '${{ secrets.GITHUB_TOKEN }}'
           path: openssl
+      
       - name: Build OpenSSL
         run: |
           cd openssl
@@ -94,11 +97,13 @@ jobs:
           make -j$(nproc) build_generated libcrypto.a
           echo "LIBCRYPTO_INCLUDES=-I${GITHUB_WORKSPACE}/openssl/include" >> $GITHUB_ENV
           echo "LIBCRYPTO_LIBS=${GITHUB_WORKSPACE}/openssl/libcrypto.a" >> $GITHUB_ENV
+      
       - uses: actions/checkout@v3
         with:
           repository: libimobiledevice/libplist
           token: '${{ secrets.GITHUB_TOKEN }}'
           path: libplist
+      
       - name: Build LibPlist
         run: |
           cd libplist
@@ -106,14 +111,17 @@ jobs:
           make -j$(nproc)
           echo "LIBPLIST_INCLUDES=-I${GITHUB_WORKSPACE}/libplist/include" >> $GITHUB_ENV
           echo "LIBPLIST_LIBS=${GITHUB_WORKSPACE}/libplist/src/.libs/libplist-2.0.a" >> $GITHUB_ENV
+      
       - name: Build Ldid
         run: | 
-          CC=${CC} CXX=${CXX} make -j$(nproc)
+          make -j$(nproc)
           ${PLATFORM}-strip ldid
+      
       - uses: actions/upload-artifact@v1
         with:
           name: 'ldid_linux_${{ env.ARCH }}'
           path: ldid
+      
       - name: Upload Release Asset Linux
         uses: actions/upload-release-asset@v1
         if: '${{ github.event_name == ''release'' }}'
@@ -124,6 +132,7 @@ jobs:
           asset_path: ldid
           asset_name: 'ldid_linux_${{ env.ARCH }}'
           asset_content_type: application/octet-stream
+  
   build-macos:
     runs-on: macos-11
     strategy:
@@ -146,7 +155,6 @@ jobs:
         key: build-macos-${{ matrix.arch }}-${ { env.GITHUB_SHA } }
         restore-keys: |
           build-macos-${{ matrix.arch }}-
-
     - name: setup environment
       run: |
         export DOWNLOAD_PATH=${HOME}/dep_src
@@ -154,23 +162,19 @@ jobs:
         mkdir -p ${DOWNLOAD_PATH} ${DEP_PATH}
         echo "DOWNLOAD_PATH=${DOWNLOAD_PATH}" >> $GITHUB_ENV
         echo "DEP_PATH=${DEP_PATH}" >> $GITHUB_ENV
-
         if [ "${ARCH}" = "arm64" ]; then
           echo "HOST_ARCH=aarch64" >> $GITHUB_ENV
         else
           echo "HOST_ARCH=${ARCH}" >> $GITHUB_ENV
         fi
-
     - name: Setup sccache
       run: |
         brew install libtool autoconf automake
-
         # Download sccache
         wget -nc -P ${DOWNLOAD_PATH} \
           https://github.com/mozilla/sccache/releases/download/v${SCCACHE_VERSION}/sccache-v${SCCACHE_VERSION}-x86_64-apple-darwin.tar.gz
         tar xf ${DOWNLOAD_PATH}/sccache-v${SCCACHE_VERSION}-x86_64-apple-darwin.tar.gz -C ${HOME}
         chmod +x ${HOME}/sccache-v${SCCACHE_VERSION}-x86_64-apple-darwin/sccache
-
         echo "${HOME}/sccache-v${SCCACHE_VERSION}-x86_64-apple-darwin" >> $GITHUB_PATH
         echo "CC=sccache clang -arch ${ARCH} -mmacosx-version-min=10.13" >> $GITHUB_ENV
         echo "CXX=sccache clang++ -arch ${ARCH} -mmacosx-version-min=10.13" >> $GITHUB_ENV
@@ -207,14 +211,12 @@ jobs:
         
         echo "LIBCRYPTO_INCLUDES=-I${GITHUB_WORKSPACE}/openssl/include" >> $GITHUB_ENV
         echo "LIBCRYPTO_LIBS=${GITHUB_WORKSPACE}/openssl/libcrypto.a" >> $GITHUB_ENV
-
     - name: Build Ldid
       run: |
         make -j$(sysctl -n hw.ncpu) \
           CXXFLAGS="-flto=thin ${CXXFLAGS}" \
           LDFLAGS="-flto=thin"
         strip ldid
-
     - uses: actions/upload-artifact@v1
       with:
         name: ldid_macos_${{ matrix.arch }}
@@ -230,3 +232,142 @@ jobs:
         asset_path: ldid
         asset_name: ldid_macos_${{ matrix.arch }}
         asset_content_type: application/octet-stream
+       
+  build-windows:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        platform:
+          - arch: win32-x86_64
+            target: i686-w64-mingw32
+    env:
+      TARGET: ${{ matrix.platform.target }}
+      ARCH: ${{ matrix.platform.arch }}
+    steps:
+ 
+      - uses: actions/checkout@v3
+      
+      - name: Setup Environment
+        run: |
+          export DOWNLOAD_PATH=${HOME}/dep_src
+          export DEP_PATH=${HOME}/build
+          mkdir -p ${DOWNLOAD_PATH} ${DEP_PATH}
+          echo "DOWNLOAD_PATH=${DOWNLOAD_PATH}" >> $GITHUB_ENV
+          echo "DEP_PATH=${DEP_PATH}" >> $GITHUB_ENV
+    
+      - uses: actions/cache@v2
+        with:
+          path: |
+            ~/Library/Caches/Mozilla.sccache
+            ~/dep_src
+          key: build-${{ matrix.platform.arch }}-${ { env.GITHUB_SHA } }
+          restore-keys: |
+            build-${{ matrix.platform.arch }}-
+    
+      - name: Setup sccache
+        run: |
+          wget -q -nc -P ${DOWNLOAD_PATH} https://github.com/mozilla/sccache/releases/download/v${SCCACHE_VERSION}/sccache-v${SCCACHE_VERSION}-x86_64-unknown-linux-musl.tar.gz
+          tar xf ${DOWNLOAD_PATH}/sccache-v${SCCACHE_VERSION}-x86_64-unknown-linux-musl.tar.gz -C ${HOME}
+          chmod +x ${HOME}/sccache-v${SCCACHE_VERSION}-x86_64-unknown-linux-musl/sccache
+          sudo ln -s ${HOME}/sccache-v${SCCACHE_VERSION}-x86_64-unknown-linux-musl/sccache /usr/bin/
+
+      - name: Setup Toolchain
+        run: |
+          sudo apt-get -y update
+          sudo apt-get -y install mingw-w64 autopoint libtool automake autoconf gettext zip
+          
+          echo "CC=sccache i686-w64-mingw32-gcc-win32" >> $GITHUB_ENV
+          echo "CXX=sccache i686-w64-mingw32-g++-win32" >> $GITHUB_ENV
+          echo "AR=i686-w64-mingw32-gcc-ar-win32" >> $GITHUB_ENV
+          echo "NM=i686-w64-mingw32-gcc-nm-win32" >> $GITHUB_ENV
+          echo "RANLIB=i686-w64-mingw32-gcc-ranlib-win32" >> $GITHUB_ENV
+          echo "CFLAGS=-Os -fPIC -fno-pie -no-pie -static -static-libstdc++ -flto -ffunction-sections -fdata-sections" >> $GITHUB_ENV
+          echo "CXXFLAGS=-Os -fPIC -fno-pie -no-pie -static -static-libstdc++ -flto -ffunction-sections -fdata-sections" >> $GITHUB_ENV
+          echo "LDFLAGS=-Os -fPIC -fno-pie -no-pie -static -static-libstdc++ -Wl,--gc-sections -Wl,-strip-all -flto -ffunction-sections -fdata-sections" >> $GITHUB_ENV 
+      
+      - uses: actions/checkout@v3
+        with:
+          repository: laurikari/tre
+          token: '${{ secrets.GITHUB_TOKEN }}'
+          path: tre
+          
+      - name: Build Tre
+        run: |
+          cd tre
+          ./utils/autogen.sh --disable-agrep
+          ./configure --host=${TARGET} --prefix=/usr/${TARGET} --disable-shared && cat config.log
+          cat config.log && CC="${CC}" make -j$(nproc)
+          sudo make install
+          echo "LIBTRE_INCLUDES=-I/usr/${TARGET}/include/tre" >> $GITHUB_ENV
+          echo "LIBTRE_LIBS=/usr/${TARGET}/lib/libtre.a" >> $GITHUB_ENV
+      
+      - uses: actions/checkout@v3
+        with:
+          repository: openssl/openssl
+          ref: openssl-${{ env.OPENSSL_VERSION }}
+          token: '${{ secrets.GITHUB_TOKEN }}'
+          path: openssl
+      
+      - name: Build OpenSSL
+        run: |
+          cd openssl
+          ./config --banner=Configured -static enable-fips enable-capieng no-module enable-ktls no-zlib \
+               no-async no-comp no-idea no-mdc2 no-rc5 no-ec2m no-sm2 no-sm4 no-ssl3 no-seed no-weak-ssl-ciphers mingw
+          make -j$(nproc) build_generated libcrypto.a
+          echo "LIBCRYPTO_INCLUDES=-I${GITHUB_WORKSPACE}/openssl/include" >> $GITHUB_ENV
+          echo "LIBCRYPTO_LIBS=${GITHUB_WORKSPACE}/openssl/libcrypto.a" >> $GITHUB_ENV
+      
+      - uses: actions/checkout@v3
+        with:
+          repository: libimobiledevice/libplist
+          token: '${{ secrets.GITHUB_TOKEN }}'
+          path: libplist
+      
+      - name: Build LibPlist
+        run: |
+          cd libplist
+          ./autogen.sh --host=${TARGET} --without-cython --disable-shared
+          make -j$(nproc)
+          echo "LIBPLIST_INCLUDES=-I${GITHUB_WORKSPACE}/libplist/include" >> $GITHUB_ENV
+          echo "LIBPLIST_LIBS=${GITHUB_WORKSPACE}/libplist/src/.libs/libplist-2.0.a" >> $GITHUB_ENV
+          
+      - uses: actions/checkout@v3
+        with:
+          repository: alitrack/mman-win32
+          token: '${{ secrets.GITHUB_TOKEN }}'
+          path: mman
+          
+      - name: Build Mman-win32
+        run: |
+          cd mman
+          ./configure --enable-static --cc="${CC}"
+          CFLAGS="${CFLAGS} -municode" LDFLAGS="${LDFLAGS} -municode" make -j$(nproc)
+          sudo make install
+          echo "LIBMMAN_INCLUDES=-I/mingw/include" >> $GITHUB_ENV
+          echo "LIBMMAN_LIBS=/mingw/lib/libmman.a" >> $GITHUB_ENV
+          
+      - name: Build Ldid
+        run: |
+          echo "CFLAGS=" >> $GITHUB_ENV
+          echo "CXXFLAGS=" >> $GITHUB_ENV
+          echo "LDFLAGS=" >> $GITHUB_ENV 
+          i686-w64-mingw32-g++-win32 -c -static -static-libgcc -static-libstdc++ -lpthread ${LIBPLIST_INCLUDES} ${LIBCRYPTO_INCLUDES} ${LIBTRE_INCLUDES} ${LIBMMAN_INCLUDES} -I. -DLDID_VERSION=\"2.1.5-procursus5\" ldid.cpp -o ldid.cpp.o
+          i686-w64-mingw32-g++-win32 -o ldid.exe ldid.cpp.o ${LIBCRYPTO_LIBS} ${LIBPLIST_LIBS} ${LIBTRE_LIBS} ${LIBMMAN_LIBS} -static -static-libgcc -static-libstdc++ -lpthread -lws2_32 -lcrypt32 -ladvapi32 -lgdi32 -luser32 -lmingw32
+          i686-w64-mingw32-strip ldid.exe
+      
+      - uses: actions/upload-artifact@v3
+        with:
+          name: ldid-win32-x86_64
+          path: ldid.exe
+          
+      - name: Upload Release Asset Windows
+        uses: actions/upload-release-asset@v1
+        if: ${{ github.event_name == 'release' }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ github.event.release.upload_url }}
+          asset_path: ldid.exe
+          asset_name: ldid_${{ matrix.platform.arch }}
+          asset_content_type: application/octet-stream
