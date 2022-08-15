@@ -263,22 +263,32 @@ jobs:
           wget -q -nc -P ${DOWNLOAD_PATH} https://github.com/mozilla/sccache/releases/download/v${SCCACHE_VERSION}/sccache-v${SCCACHE_VERSION}-x86_64-unknown-linux-musl.tar.gz
           tar xf ${DOWNLOAD_PATH}/sccache-v${SCCACHE_VERSION}-x86_64-unknown-linux-musl.tar.gz -C ${HOME}
           chmod +x ${HOME}/sccache-v${SCCACHE_VERSION}-x86_64-unknown-linux-musl/sccache
-          sudo ln -s ${HOME}/sccache-v${SCCACHE_VERSION}-x86_64-unknown-linux-musl/sccache /usr/bin/
-
+          sudo ln -sf ${HOME}/sccache-v${SCCACHE_VERSION}-x86_64-unknown-linux-musl/sccache /usr/bin/
+          
       - name: Setup Toolchain
         run: |
+          sudo add-apt-repository universe
           sudo apt-get -y update
-          sudo apt-get -y install mingw-w64 autopoint libtool automake autoconf gettext zip
-          
-          echo "CC=sccache i686-w64-mingw32-gcc-win32" >> $GITHUB_ENV
-          echo "CXX=sccache i686-w64-mingw32-g++-win32" >> $GITHUB_ENV
-          echo "AR=i686-w64-mingw32-gcc-ar-win32" >> $GITHUB_ENV
-          echo "NM=i686-w64-mingw32-gcc-nm-win32" >> $GITHUB_ENV
-          echo "RANLIB=i686-w64-mingw32-gcc-ranlib-win32" >> $GITHUB_ENV
-          echo "CFLAGS=-Os -fPIC -fno-pie -no-pie -static -static-libstdc++ -flto -ffunction-sections -fdata-sections" >> $GITHUB_ENV
-          echo "CXXFLAGS=-Os -fPIC -fno-pie -no-pie -static -static-libstdc++ -flto -ffunction-sections -fdata-sections" >> $GITHUB_ENV
-          echo "LDFLAGS=-Os -fPIC -fno-pie -no-pie -static -static-libstdc++ -Wl,--gc-sections -Wl,-strip-all -flto -ffunction-sections -fdata-sections" >> $GITHUB_ENV 
-      
+          sudo apt-get -y install g++-mingw-w64-i686-win32 gcc-mingw-w64-i686-win32 autopoint libtool automake autoconf gettext zip perl
+          ls -al /usr/
+          export CC="i686-w64-mingw32-gcc-win32"
+          export CXX="i686-w64-mingw32-g++-win32"
+          export AR="i686-w64-mingw32-gcc-ar-win32"
+          export NM="i686-w64-mingw32-gcc-nm-win32"
+          export RANLIB="i686-w64-mingw32-gcc-ranlib-win32"
+          export CFLAGS="-Os -fPIC -fno-pie -no-pie -static -static-libstdc++ -flto -ffunction-sections -fdata-sections -I/usr/i686-w64-mingw32/include"
+          export CXXFLAGS="-Os -fPIC -fno-pie -no-pie -static -static-libstdc++ -Wl,--gc-sections -Wl,-strip-all -flto -ffunction-sections -fdata-sections -I/usr/i686-w64-mingw32/include"
+          export LDFLAGS="-L/usr/i686-w64-mingw32/lib"
+
+          echo "CC=${CC}" >> $GITHUB_ENV
+          echo "CXX=${CXX}" >> $GITHUB_ENV
+          echo "AR=${AR}" >> $GITHUB_ENV
+          echo "NM=${NM}" >> $GITHUB_ENV
+          echo "RANLIB=${RANLIB}" >> $GITHUB_ENV
+          echo "CFLAGS=${CFLAGS}" >> $GITHUB_ENV
+          echo "CXXFLAGS=${CXXFLAGS}" >> $GITHUB_ENV
+          echo "LDFLAGS=${LDFLAGS}" >> $GITHUB_ENV
+
       - uses: actions/checkout@v3
         with:
           repository: laurikari/tre
@@ -289,11 +299,14 @@ jobs:
         run: |
           cd tre
           ./utils/autogen.sh --disable-agrep
-          ./configure --host=${TARGET} --prefix=/usr/${TARGET} --disable-shared && cat config.log
-          cat config.log && CC="${CC}" make -j$(nproc)
-          sudo make install
-          echo "LIBTRE_INCLUDES=-I/usr/${TARGET}/include/tre" >> $GITHUB_ENV
-          echo "LIBTRE_LIBS=/usr/${TARGET}/lib/libtre.a" >> $GITHUB_ENV
+          ./configure --host=${{ matrix.platform.target }} --prefix=/usr/${{ matrix.platform.target }} --disable-shared
+          make -j$(nproc)
+          
+          export LIBTRE_INCLUDES="-I/usr/${{ matrix.platform.target }}/include/tre"
+          export LIBTRE_LIBS="/usr/${{ matrix.platform.target }}/lib/libtre.a"
+          
+          echo "LIBTRE_INCLUDES=${LIBTRE_INCLUDES}" >> $GITHUB_ENV
+          echo "LIBTRE_LIBS=${LIBTRE_LIBS}" >> $GITHUB_ENV
       
       - uses: actions/checkout@v3
         with:
@@ -307,9 +320,13 @@ jobs:
           cd openssl
           ./config --banner=Configured -static enable-fips enable-capieng no-module enable-ktls no-zlib \
                no-async no-comp no-idea no-mdc2 no-rc5 no-ec2m no-sm2 no-sm4 no-ssl3 no-seed no-weak-ssl-ciphers mingw
-          make -j$(nproc) build_generated libcrypto.a
-          echo "LIBCRYPTO_INCLUDES=-I${GITHUB_WORKSPACE}/openssl/include" >> $GITHUB_ENV
-          echo "LIBCRYPTO_LIBS=${GITHUB_WORKSPACE}/openssl/libcrypto.a" >> $GITHUB_ENV
+          CFLAGS="${CFLAGS}" CXXFLAGS="${CXXFLAGS}" LDFLAGS="${LDFLAGS}" make -j$(nproc) build_generated libcrypto.a
+          
+          export LIBCRYPTO_INCLUDES="-I${GITHUB_WORKSPACE}/openssl/include"
+          export LIBCRYPTO_LIBS="${GITHUB_WORKSPACE}/openssl/libcrypto.a"
+          
+          echo "LIBCRYPTO_INCLUDES=-${LIBCRYPTO_INCLUDES}" >> $GITHUB_ENV
+          echo "LIBCRYPTO_LIBS=${LIBCRYPTO_LIBS}" >> $GITHUB_ENV
       
       - uses: actions/checkout@v3
         with:
@@ -322,8 +339,12 @@ jobs:
           cd libplist
           ./autogen.sh --host=${TARGET} --without-cython --disable-shared
           make -j$(nproc)
-          echo "LIBPLIST_INCLUDES=-I${GITHUB_WORKSPACE}/libplist/include" >> $GITHUB_ENV
-          echo "LIBPLIST_LIBS=${GITHUB_WORKSPACE}/libplist/src/.libs/libplist-2.0.a" >> $GITHUB_ENV
+          
+          export LIBPLIST_INCLUDES="-I${GITHUB_WORKSPACE}/libplist/include"
+          export LIBPLIST_LIBS="${GITHUB_WORKSPACE}/libplist/src/.libs/libplist-2.0.a"
+          
+          echo "LIBPLIST_INCLUDES=${LIBPLIST_INCLUDES}" >> $GITHUB_ENV
+          echo "LIBPLIST_LIBS=${LIBPLIST_LIBS}" >> $GITHUB_ENV
           
       - uses: actions/checkout@v3
         with:
@@ -337,14 +358,22 @@ jobs:
           ./configure --enable-static --cc="${CC}"
           CFLAGS="${CFLAGS} -municode" LDFLAGS="${LDFLAGS} -municode" make -j$(nproc)
           sudo make install
-          echo "LIBMMAN_INCLUDES=-I/mingw/include" >> $GITHUB_ENV
-          echo "LIBMMAN_LIBS=/mingw/lib/libmman.a" >> $GITHUB_ENV
+          
+          export LIBMMAN_INCLUDES="-I/mingw/include"
+          export LIBMMAN_LIBS="/mingw/lib/libmman.a"
+          
+          echo "LIBMMAN_INCLUDES=${LIBMMAN_INCLUDES}" >> $GITHUB_ENV
+          echo "LIBMMAN_LIBS=${LIBMMAN_LIBS}" >> $GITHUB_ENV
           
       - name: Build Ldid
         run: |
-          echo "CFLAGS=" >> $GITHUB_ENV
-          echo "CXXFLAGS=" >> $GITHUB_ENV
-          echo "LDFLAGS=" >> $GITHUB_ENV 
+          unset CFLAGS
+          unset CXXFLAGS
+          unset LDFLAGS
+          
+          echo "CFLAGS=${CFLAGS}" >> $GITHUB_ENV
+          echo "CXXFLAGS=${CXXFLAGS}" >> $GITHUB_ENV
+          echo "LDFLAGS=${LDFLAGS}" >> $GITHUB_ENV
           i686-w64-mingw32-g++-win32 -c -static -static-libgcc -static-libstdc++ -lpthread ${LIBPLIST_INCLUDES} ${LIBCRYPTO_INCLUDES} ${LIBTRE_INCLUDES} ${LIBMMAN_INCLUDES} -I. -DLDID_VERSION=\"2.1.5-procursus5\" ldid.cpp -o ldid.cpp.o
           i686-w64-mingw32-g++-win32 -o ldid.exe ldid.cpp.o ${LIBCRYPTO_LIBS} ${LIBPLIST_LIBS} ${LIBTRE_LIBS} ${LIBMMAN_LIBS} -static -static-libgcc -static-libstdc++ -lpthread -lws2_32 -lcrypt32 -ladvapi32 -lgdi32 -luser32 -lmingw32
           i686-w64-mingw32-strip ldid.exe

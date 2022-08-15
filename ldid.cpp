@@ -2013,8 +2013,10 @@ static void mkdir_p(const std::string &path) {
     if (path.empty())
         return;
 #if defined (WIN32) || defined (_MSC_VER) || defined (__MINGW32__)
-    if (_syscall(mkdir(path.c_str()), EEXIST) == -EEXIST)
-        return;
+    if (_mkdir(path.c_str()) == 0)
+        fprintf(stderr, "Directory was created\n");
+    else
+        fprintf(stderr, "Error code %d %d\n", EEXIST, ENOENT);
 #else
     if (_syscall(mkdir(path.c_str(), 0755), EEXIST) == -EEXIST)
         return;
