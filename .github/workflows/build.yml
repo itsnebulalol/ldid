@@ -267,7 +267,7 @@ jobs:
           
       - name: Setup Toolchain
         run: |
-          sudo add-apt-repository universe
+          sudo add-apt-repository -y universe
           sudo apt-get -y update
           sudo apt-get -y install g++-mingw-w64-i686-win32 gcc-mingw-w64-i686-win32 autopoint libtool automake autoconf gettext zip perl
           ls -al /usr/
@@ -325,7 +325,7 @@ jobs:
           export LIBCRYPTO_INCLUDES="-I${GITHUB_WORKSPACE}/openssl/include"
           export LIBCRYPTO_LIBS="${GITHUB_WORKSPACE}/openssl/libcrypto.a"
           
-          echo "LIBCRYPTO_INCLUDES=-${LIBCRYPTO_INCLUDES}" >> $GITHUB_ENV
+          echo "LIBCRYPTO_INCLUDES=${LIBCRYPTO_INCLUDES}" >> $GITHUB_ENV
           echo "LIBCRYPTO_LIBS=${LIBCRYPTO_LIBS}" >> $GITHUB_ENV
       
       - uses: actions/checkout@v3
