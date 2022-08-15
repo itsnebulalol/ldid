@@ -67,11 +67,27 @@ jobs:
           # Download Toolchain
           wget -q -nc -P ${DOWNLOAD_PATH} https://files.itsnebula.net/${TOOLCHAIN}.tgz
           tar xf ${DOWNLOAD_PATH}/${TOOLCHAIN}.tgz -C ${HOME}
+          
+          
+          
+          echo "CC=sccache ${PLATFORM}-gcc" >> $GITHUB_ENV
+          echo "CXX=sccache ${PLATFORM}-g++" >> $GITHUB_ENV
+          echo "AR=${PLATFORM}-gcc-ar" >> $GITHUB_ENV
+          echo "NM=${PLATFORM}-gcc-nm" >> $GITHUB_ENV
+          echo "RANLIB=${PLATFORM}-gcc-ranlib" >> $GITHUB_ENV
+          echo "CFLAGS=-Os -fPIC -fno-pie -no-pie -static -static-libstdc++ -flto -ffunction-sections -fdata-sections" >> $GITHUB_ENV
+          echo "CXXFLAGS=-Os -fPIC -fno-pie -no-pie -static -static-libstdc++ -flto -ffunction-sections -fdata-sections" >> $GITHUB_ENV
+          echo "LDFLAGS=-Os -fPIC -fno-pie -no-pie -static -static-libstdc++ -Wl,--gc-sections -Wl,-strip-all -flto -ffunction-sections -fdata-sections" >> $GITHUB_ENV    
+          echo "${HOME}/${TOOLCHAIN}/bin" >> $GITHUB_PATH
+          
+      - name: Setup sccache
+        run: |
           # Download sccache
           wget -q -nc -P ${DOWNLOAD_PATH} https://github.com/mozilla/sccache/releases/download/v${SCCACHE_VERSION}/sccache-v${SCCACHE_VERSION}-x86_64-unknown-linux-musl.tar.gz
           tar xf ${DOWNLOAD_PATH}/sccache-v${SCCACHE_VERSION}-x86_64-unknown-linux-musl.tar.gz -C ${HOME}
           chmod +x ${HOME}/sccache-v${SCCACHE_VERSION}-x86_64-unknown-linux-musl/sccache
           mv ${HOME}/sccache-v${SCCACHE_VERSION}-x86_64-unknown-linux-musl/sccache ${HOME}/${TOOLCHAIN}/bin/sccache
+          
           echo "CC=sccache ${PLATFORM}-gcc" >> $GITHUB_ENV
           echo "CXX=sccache ${PLATFORM}-g++" >> $GITHUB_ENV
           echo "AR=${PLATFORM}-gcc-ar" >> $GITHUB_ENV
@@ -301,6 +317,7 @@ jobs:
           ./utils/autogen.sh --disable-agrep
           ./configure --host=${{ matrix.platform.target }} --prefix=/usr/${{ matrix.platform.target }} --disable-shared
           make -j$(nproc)
+          sudo make install
           
           export LIBTRE_INCLUDES="-I/usr/${{ matrix.platform.target }}/include/tre"
           export LIBTRE_LIBS="/usr/${{ matrix.platform.target }}/lib/libtre.a"
