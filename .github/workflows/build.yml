@@ -358,7 +358,7 @@ jobs:
       
       - uses: actions/upload-artifact@v3
         with:
-          name: ldid-win32-x86_64
+          name: ldid_win32_x86_64
           path: ldid.exe
           
       - name: Upload Release Asset Windows
@@ -369,5 +369,5 @@ jobs:
         with:
           upload_url: ${{ github.event.release.upload_url }}
           asset_path: ldid.exe
-          asset_name: ldid_${{ matrix.platform.arch }}
+          asset_name: ldid_win32_x86_64
           asset_content_type: application/octet-stream
