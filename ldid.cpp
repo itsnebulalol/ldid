@@ -1805,7 +1805,7 @@ class Stuff {
     }
 };
 
-// xina fix;
+// xina fix;
 struct SEQUENCE_hash_sha1 {
     uint8_t SEQUENCE[2] = {0x30, 0x1d}; // size
     uint8_t OBJECT_IDENTIFIER[7] = {0x06, 0x05, 0x2B, 0x0E, 0x03, 0x02, 0x1A}; // OBJECT IDENTIFIER 1.3.14.3.2.26 sha1 (OIW)
@@ -1856,13 +1856,13 @@ class Signature {
         ASN1_OBJECT *obj2 = OBJ_txt2obj("1.2.840.113635.100.9.2", 1);
         X509_ATTRIBUTE_set1_object(attribute, obj2);
         if (alternateCDSHA1.size() != 0) {
-            // xina fix;
+            // xina fix;
             SEQUENCE_hash_sha1 seq1;
             memcpy((void *)seq1.hash, (void *)alternateCDSHA1.data(), alternateCDSHA1.size());
             X509_ATTRIBUTE_set1_data(attribute, V_ASN1_SEQUENCE, &seq1, sizeof(seq1));
         }
         if (alternateCDSHA256.size() != 0) {
-            // xina fix;
+            // xina fix;
             SEQUENCE_hash_sha256 seq256;
             memcpy((void *)seq256.hash, (void *)alternateCDSHA256.data(), alternateCDSHA256.size());
             X509_ATTRIBUTE_set1_data(attribute, V_ASN1_SEQUENCE, &seq256, sizeof(seq256));
@@ -2012,7 +2012,7 @@ class Split {
 static void mkdir_p(const std::string &path) {
     if (path.empty())
         return;
-#ifdef __WIN32__
+#if defined (__WIN32__) || defined (_MSC_VER) || defined (__MINGW32__)
     if (_syscall(mkdir(path.c_str()), EEXIST) == -EEXIST)
         return;
 #else
@@ -2036,12 +2036,16 @@ static std::string Temporary(std::filebuf &file, const Split &split) {
 static void Commit(const std::string &path, const std::string &temp) {
     struct stat info;
     if (_syscall(stat(path.c_str(), &info), ENOENT) == 0) {
-#ifndef __WIN32__
+
+#if !defined (__WIN32__) && !defined (_MSC_VER) && !defined (__MINGW32__)
         _syscall(chown(temp.c_str(), info.st_uid, info.st_gid));
 #endif
         _syscall(chmod(temp.c_str(), info.st_mode));
+        
+        #if defined (__WIN32__) || defined (_MSC_VER) || defined (__MINGW32__)
+            _syscall(remove(path.c_str()));
+        #endif
     }
-
     _syscall(rename(temp.c_str(), path.c_str()));
     cleanup.erase(std::remove(cleanup.begin(), cleanup.end(), temp), cleanup.end());
 }
@@ -2470,7 +2474,7 @@ DiskFolder::~DiskFolder() {
             Commit(commit.first, commit.second);
 }
 
-#ifndef __WIN32__
+#if !defined (__WIN32__) && !defined (_MSC_VER) && !defined (__MINGW32__)
 std::string readlink(const std::string &path) {
     for (size_t size(1024); ; size *= 2) {
         std::string data;
@@ -2502,7 +2506,8 @@ void DiskFolder::Find(const std::string &root, const std::string &base, const Fu
 
         bool directory;
 
-#ifdef __WIN32__
+
+#if defined (__WIN32__) || defined (_MSC_VER) || defined (__MINGW32__)
         struct stat info;
         _syscall(stat((path + name).c_str(), &info));
         if (S_ISDIR(info.st_mode))
@@ -3557,6 +3562,9 @@ int main(int argc, char *argv[]) {
             }
 
             if (flag_h) {
+                #if defined (__WIN32__) || defined (_MSC_VER) || defined (__MINGW32__)
+                    #define realpath(N,R) _fullpath((R),(N),PATH_MAX)
+                #endif
                 char *buf = _syscall(realpath(file.c_str(), NULL));
                 printf("Executable=%s\n", buf);
                 free(buf);
