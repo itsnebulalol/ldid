@@ -2012,7 +2012,7 @@ class Split {
 static void mkdir_p(const std::string &path) {
     if (path.empty())
         return;
-#ifdef __WIN32__
+#if defined (WIN32) || defined (_MSC_VER) || defined (__MINGW32__)
     if (_syscall(mkdir(path.c_str()), EEXIST) == -EEXIST)
         return;
 #else
@@ -2037,12 +2037,10 @@ static void Commit(const std::string &path, const std::string &temp) {
     struct stat info;
     if (_syscall(stat(path.c_str(), &info), ENOENT) == 0) {
 
-#if defined WIN32 || _MSC_VER || __MINGW32__
-        _syscall(chmod(temp.c_str(), info.st_mode));
-#else
-        _syscall(chmod(temp.c_str(), info.st_mode));
+#if !defined (__WIN32__) && !defined (_MSC_VER) && !defined (__MINGW32__)
         _syscall(chown(temp.c_str(), info.st_uid, info.st_gid));
 #endif
+        _syscall(chmod(temp.c_str(), info.st_mode));
     }
 
     _syscall(rename(temp.c_str(), path.c_str()));
@@ -2473,7 +2471,7 @@ DiskFolder::~DiskFolder() {
             Commit(commit.first, commit.second);
 }
 
-#ifndef __WIN32__
+#if !defined (__WIN32__) && !defined (_MSC_VER) && !defined (__MINGW32__)
 std::string readlink(const std::string &path) {
     for (size_t size(1024); ; size *= 2) {
         std::string data;
@@ -2505,7 +2503,7 @@ void DiskFolder::Find(const std::string &root, const std::string &base, const Fu
 
         bool directory;
 
-#ifdef __WIN32__
+#if defined (WIN32) || defined (_MSC_VER) || defined (__MINGW32__)
         struct stat info;
         _syscall(stat((path + name).c_str(), &info));
         if (S_ISDIR(info.st_mode))
@@ -3560,7 +3558,7 @@ int main(int argc, char *argv[]) {
             }
 
             if (flag_h) {
-                #if defined WIN32 || _MSC_VER || __MINGW32__
+                #if defined (WIN32) || defined (_MSC_VER) || defined (__MINGW32__)
                     #define realpath(N,R) _fullpath((R),(N),PATH_MAX)
                 #endif
                 char *buf = _syscall(realpath(file.c_str(), NULL));
