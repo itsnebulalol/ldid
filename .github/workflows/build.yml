@@ -227,7 +227,7 @@ jobs:
         files: ldid_macos_${{ matrix.arch }}
        
   build-windows:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     strategy:
       fail-fast: false
       matrix:
