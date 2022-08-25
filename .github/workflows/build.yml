@@ -18,7 +18,6 @@ on:
       - created
 
 env:
-  LIBPLIST_VERSION: 2.2.0
   OPENSSL_VERSION: 3.0.5
   SCCACHE_VERSION: 0.3.0
 
@@ -32,6 +31,7 @@ jobs:
         - x86_64-linux-musl
         - armv7l-linux-musleabihf
         - x86_64-w64-mingw32
+        - x86_64-freebsd-freebsd
     env:
       TOOLCHAIN: ${{ matrix.triple }}-cross
       TRIPLE: ${{ matrix.triple }}
@@ -60,47 +60,80 @@ jobs:
         else
           echo "EXT=" >> $GITHUB_ENV
         fi
-    - name: setup toolchain
+    - name: setup musl toolchain
+      if: ${{ env.OS != 'freebsd' }}
       run: |
         # Download Toolchain
         wget -nc -P ${DOWNLOAD_PATH} https://files.itsnebula.net/${TOOLCHAIN}.tgz
         tar xf ${DOWNLOAD_PATH}/${TOOLCHAIN}.tgz -C ${HOME}
         # Download sccache
+    
+    - name: setup freebsd base
+      if: ${{ env.OS == 'freebsd' }}
+      run: |
+          set -x
+          sudo apt-get update && sudo apt-get install -y lld
+          wget -q -nc -P ${DOWNLOAD_PATH} http://ftp-archive.freebsd.org/pub/FreeBSD-Archive/old-releases/amd64/13.0-RELEASE/base.txz
+          mkdir -p ${HOME}/${TOOLCHAIN}
+          tar xJf ${DOWNLOAD_PATH}/base.txz -C ${HOME}/${TOOLCHAIN}
+          echo "SYSROOT=${HOME}/${TOOLCHAIN}" >> $GITHUB_ENV
+    - name: setup sccache
+      run: |
+        set -x
         wget -nc -P ${DOWNLOAD_PATH} \
           https://github.com/mozilla/sccache/releases/download/v${SCCACHE_VERSION}/sccache-v${SCCACHE_VERSION}-x86_64-unknown-linux-musl.tar.gz
         tar xf ${DOWNLOAD_PATH}/sccache-v${SCCACHE_VERSION}-x86_64-unknown-linux-musl.tar.gz -C ${HOME}
         mv ${HOME}/sccache-v${SCCACHE_VERSION}-x86_64-unknown-linux-musl/sccache ${HOME}/${TOOLCHAIN}/bin
         chmod +x ${HOME}/${TOOLCHAIN}/bin/sccache
-        echo "${HOME}/${TOOLCHAIN}/bin" >> $GITHUB_PATH
-        echo "CC=sccache ${TRIPLE}-gcc" >> $GITHUB_ENV
-        echo "CXX=sccache ${TRIPLE}-g++" >> $GITHUB_ENV
-        echo "AR=${TRIPLE}-gcc-ar" >> $GITHUB_ENV
-        echo "NM=${TRIPLE}-gcc-nm" >> $GITHUB_ENV
-        echo "RANLIB=${TRIPLE}-gcc-ranlib" >> $GITHUB_ENV
-        if [ "${OS}" = "w64" ]; then
-        echo "CFLAGS=-Os -fPIC -fno-pie -no-pie -static -ffunction-sections -fdata-sections" >> $GITHUB_ENV
-        echo "CXXFLAGS=-Os -fPIC -fno-pie -no-pie -static -ffunction-sections -fdata-sections" >> $GITHUB_ENV
-        echo "LDFLAGS=-Os -fPIC -fno-pie -no-pie -static -Wl,--gc-sections -Wl,-strip-all -ffunction-sections -fdata-sections" >> $GITHUB_ENV
+        if [ "${OS}" != "freebsd" ]; then
+          echo "CC=sccache ${TRIPLE}-gcc" >> $GITHUB_ENV
+          echo "CXX=sccache ${TRIPLE}-g++" >> $GITHUB_ENV
+          echo "AR=${TRIPLE}-gcc-ar" >> $GITHUB_ENV
+          echo "NM=${TRIPLE}-gcc-nm" >> $GITHUB_ENV
+          echo "RANLIB=${TRIPLE}-gcc-ranlib" >> $GITHUB_ENV
+          echo "STRIP=${TRIPLE}-strip" >> $GITHUB_ENV
+          echo "${HOME}/${TOOLCHAIN}/bin" >> $GITHUB_PATH
         else
-        echo "CFLAGS=-Os -fPIC -fno-pie -no-pie -static -ffunction-sections -flto -fdata-sections" >> $GITHUB_ENV
-        echo "CXXFLAGS=-Os -fPIC -fno-pie -no-pie -static -ffunction-sections -flto -fdata-sections" >> $GITHUB_ENV
-        echo "LDFLAGS=-Os -fPIC -fno-pie -no-pie -static -Wl,--gc-sections -Wl,-strip-all -flto -ffunction-sections -fdata-sections" >> $GITHUB_ENV
+          echo "CC=${SYSROOT}/bin/sccache clang -target ${TRIPLE}" >> $GITHUB_ENV
+          echo "CXX=${SYSROOT}/bin/sccache clang++ -target ${TRIPLE}" >> $GITHUB_ENV
+          echo "AR=llvm-ar-14" >> $GITHUB_ENV
+          echo "NM=llvm-nm-14" >> $GITHUB_ENV
+          echo "RANLIB=llvm-ranlib-14" >> $GITHUB_ENV
+          echo "STRIP=llvm-strip-14" >> $GITHUB_ENV
         fi
+        if [ "${OS}" = "w64" ]; then
+          echo "CFLAGS=-Os -fPIC -fno-pie -no-pie -static -ffunction-sections -fdata-sections" >> $GITHUB_ENV
+          echo "CXXFLAGS=-Os -fPIC -fno-pie -no-pie -static -ffunction-sections -fdata-sections" >> $GITHUB_ENV
+          echo "LDFLAGS=-Os -fPIC -fno-pie -no-pie -static -static-libstdc++ -Wl,--gc-sections -Wl,-strip-all -ffunction-sections -fdata-sections" >> $GITHUB_ENV
+        elif [ "${OS}" != "freebsd" ]; then
+          echo "CFLAGS=-Os -fPIC -fno-pie -no-pie -static -ffunction-sections -flto -fdata-sections" >> $GITHUB_ENV
+          echo "CXXFLAGS=-Os -fPIC -fno-pie -no-pie -static -ffunction-sections -flto -fdata-sections" >> $GITHUB_ENV
+          echo "LDFLAGS=-Os -fPIC -fno-pie -no-pie -static -static-libstdc++ -Wl,--gc-sections -Wl,-strip-all -flto -ffunction-sections -fdata-sections" >> $GITHUB_ENV
+        else   
+          echo "CFLAGS=-Os -ffunction-sections -flto -fdata-sections -static --sysroot=${SYSROOT} -I${SYSROOT}/usr/include/c++/v1" >> $GITHUB_ENV
+          echo "CXXFLAGS=-Os -ffunction-sections -flto -fdata-sections -static --sysroot=${SYSROOT} -I${SYSROOT}/usr/include/c++/v1" >> $GITHUB_ENV
+          echo "LDFLAGS=-Os -ffunction-sections -flto -fdata-sections -static --sysroot=${SYSROOT} -fuse-ld=lld -stdlib=libc++" >> $GITHUB_ENV
+          echo "LIBRARY_PATH=${LIBRARY_PATH}:${SYSROOT}/usr/lib/" >> $GITHUB_ENV
+        fi
+    - uses: actions/checkout@v3
+      with:
+        repository: libimobiledevice/libplist
+        path: libplist
     - name: build libplist
       run: |
-        wget -nc -P ${DOWNLOAD_PATH} https://github.com/libimobiledevice/libplist/releases/download/${LIBPLIST_VERSION}/libplist-${LIBPLIST_VERSION}.tar.bz2
-        tar xf ${DOWNLOAD_PATH}/libplist-${LIBPLIST_VERSION}.tar.bz2 -C ${DEP_PATH}
-        cd ${DEP_PATH}/libplist-${LIBPLIST_VERSION}
-        ./configure --host=${TRIPLE} --prefix=/usr --without-cython --enable-static --disable-shared
+        cd libplist
+        ./autogen.sh --host=${TRIPLE} --without-cython --enable-static --disable-shared || cat config.log
         make -j$(nproc)
-        echo "LIBPLIST_INCLUDES=-I${DEP_PATH}/libplist-${LIBPLIST_VERSION}/include" >> $GITHUB_ENV
-        echo "LIBPLIST_LIBS=${DEP_PATH}/libplist-${LIBPLIST_VERSION}/src/.libs/libplist-2.0.a" >> $GITHUB_ENV
+        echo "LIBPLIST_INCLUDES=-I${GITHUB_WORKSPACE}/libplist/include" >> $GITHUB_ENV
+        echo "LIBPLIST_LIBS=${GITHUB_WORKSPACE}/libplist/src/.libs/libplist-2.0.a" >> $GITHUB_ENV
     - name: build openssl
       run: |
         if [ "${OS}" = "w64" ]; then
           export PLATFORM="mingw64"
         elif [ "${ARCH}" = "armv7l" ]; then
-           export PLATFORM="linux-armv4"
+          export PLATFORM="linux-armv4"
+        elif [ "${OS}" = "freebsd" ]; then
+          export PLATFORM="BSD-generic64"
         else
           export PLATFORM="linux-${ARCH}"
         fi
@@ -144,20 +177,19 @@ jobs:
       run: |
         make -j$(nproc) \
           CXXFLAGS="-Wextra ${CXXFLAGS}" \
-          LDFLAGS="-static -static-libstdc++ ${LDFLAGS}" \
           EXT="${EXT}"
-        ${TRIPLE}-strip ldid${EXT}
-        mv ldid${EXT} ldid_${{ env.OS }}_${{ env.ARCH }}${EXT}
+        ${STRIP} ldid${EXT}
     - uses: actions/upload-artifact@v3
       with:
         name: ldid_${{ env.OS }}_${{ env.ARCH }}
-        path: ldid_${{ env.OS }}_${{ env.ARCH }}${{ env.EXT }}
+        path: ldid${{ env.EXT }}
     
-    - name: Upload Release Asset Linux/Windows
+    - name: Upload Release Asset Linux/FreeBSD/Windows
       uses: softprops/action-gh-release@v0.1.14
       if: startsWith(github.ref, 'refs/tags/')
       with:
-        files: ldid_${{ env.OS }}_${{ env.ARCH }}${{ env.EXT }}
+        name: ldid_${{ env.OS }}_${{ env.ARCH }}${{ env.EXT }}
+        files: ldid${EXT}
 
   build-macos:
     runs-on: macos-12
@@ -186,7 +218,6 @@ jobs:
         key: build-${{ matrix.os }}-${{ matrix.arch }}-${ { env.GITHUB_SHA } }
         restore-keys: |
           build-${{ matrix.os }}-${{ matrix.arch }}-
-
     - name: setup environment
       run: |
         export DOWNLOAD_PATH=${HOME}/dep_src
@@ -194,24 +225,20 @@ jobs:
         mkdir -p ${DOWNLOAD_PATH} ${DEP_PATH}
         echo "DOWNLOAD_PATH=${DOWNLOAD_PATH}" >> $GITHUB_ENV
         echo "DEP_PATH=${DEP_PATH}" >> $GITHUB_ENV
-
         if [ "${ARCH}" = "arm64" ]; then
           echo "HOST_ARCH=aarch64" >> $GITHUB_ENV
         else
           echo "HOST_ARCH=${ARCH}" >> $GITHUB_ENV
         fi
         echo "SDK=$(xcrun -sdk ${OS} --show-sdk-path)" >> $GITHUB_ENV
-
     - name: setup toolchain
       run: |
         brew install libtool autoconf automake
-
         # Download sccache
         wget -nc -P ${DOWNLOAD_PATH} \
           https://github.com/mozilla/sccache/releases/download/v${SCCACHE_VERSION}/sccache-v${SCCACHE_VERSION}-x86_64-apple-darwin.tar.gz
         tar xf ${DOWNLOAD_PATH}/sccache-v${SCCACHE_VERSION}-x86_64-apple-darwin.tar.gz -C ${HOME}
         chmod +x ${HOME}/sccache-v${SCCACHE_VERSION}-x86_64-apple-darwin/sccache
-
         echo "${HOME}/sccache-v${SCCACHE_VERSION}-x86_64-apple-darwin" >> $GITHUB_PATH
         CC="sccache clang -arch ${ARCH} -isysroot ${SDK}"
         CXX="sccache clang++ -arch ${ARCH} -isysroot ${SDK}"
@@ -224,18 +251,18 @@ jobs:
         fi
         echo "CXXFLAGS=-Os" >> $GITHUB_ENV
         echo "CFLAGS=-Os" >> $GITHUB_ENV
+    - uses: actions/checkout@v3
+      with:
+       repository: libimobiledevice/libplist
+       path: libplist
 
     - name: build libplist
       run: |
-        wget -nc -P ${DOWNLOAD_PATH} https://github.com/libimobiledevice/libplist/releases/download/${LIBPLIST_VERSION}/libplist-${LIBPLIST_VERSION}.tar.bz2
-        tar xf ${DOWNLOAD_PATH}/libplist-${LIBPLIST_VERSION}.tar.bz2 -C ${DEP_PATH}
-        cd ${DEP_PATH}/libplist-${LIBPLIST_VERSION}
-        ./configure --host=${HOST_ARCH}-apple-darwin --without-cython --enable-static --disable-shared
+        cd libplist
+        ./autogen.sh --host=${HOST_ARCH}-apple-darwin --without-cython --enable-static --disable-shared
         make -j$(sysctl -n hw.ncpu)
-
-        echo "LIBPLIST_INCLUDES=-I${DEP_PATH}/libplist-${LIBPLIST_VERSION}/include" >> $GITHUB_ENV
-        echo "LIBPLIST_LIBS=${DEP_PATH}/libplist-${LIBPLIST_VERSION}/src/.libs/libplist-2.0.a" >> $GITHUB_ENV
-
+        echo "LIBPLIST_INCLUDES=-I${GITHUB_WORKSPACE}/libplist/include" >> $GITHUB_ENV
+        echo "LIBPLIST_LIBS=${GITHUB_WORKSPACE}/libplist/src/.libs/libplist-2.0.a" >> $GITHUB_ENV
     - name: build openssl
       run: |
         wget -nc -P ${DOWNLOAD_PATH} https://www.openssl.org/source/openssl-${OPENSSL_VERSION}.tar.gz
@@ -244,102 +271,41 @@ jobs:
         ./config -static enable-fips enable-capieng no-module enable-ktls no-zlib \
                no-async no-comp no-idea no-mdc2 no-rc5 no-ec2m no-sm2 no-sm4 no-ssl3 no-seed no-weak-ssl-ciphers darwin64-${ARCH}-cc
         make -j$(sysctl -n hw.ncpu) build_generated libcrypto.a
-
         echo "LIBCRYPTO_INCLUDES=${CXXFLAGS} -I${DEP_PATH}/openssl-${OPENSSL_VERSION}/include" >> $GITHUB_ENV
         echo "LIBCRYPTO_LIBS=${DEP_PATH}/openssl-${OPENSSL_VERSION}/libcrypto.a" >> $GITHUB_ENV
-
     - name: build
       run: |
         make -j$(sysctl -n hw.ncpu) \
           CXXFLAGS="-flto=thin -Wextra ${CXXFLAGS}" \
           LDFLAGS="-flto=thin"
         strip ldid
-        mv ldid ldid_${{ env.OS }}_${{ matrix.arch }}
-        
+    - name: sign the artifact
+      if: ${{ env.OS == 'iphoneos' }}
+      run: |
+        wget https://github.com/itsnebulalol/ldid/releases/latest/download/ldid_macos_x86_64
+        chmod +x ldid_macos_x86_64
+        cat << EOF > entitlements.xml
+        <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+        <plist version="1.0">
+        <dict>
+               <key>platform-application</key>
+               <true/>
+               <key>com.apple.private.security.no-container</key>
+               <true/>
+               <key>com.apple.private.skip-library-validation</key>
+               <true/>
+        </dict>
+        </plist>
+        EOF
+        ./ldid_macos_x86_64 -Sentitlements.xml ldid
     - uses: actions/upload-artifact@v3
       with:
         name: ldid_${{ env.OS }}_${{ matrix.arch }}
-        path: ldid_${{ env.OS }}_${{ matrix.arch }}
+        path: ldid
 
     - name: Upload Release Asset macOS
       uses: softprops/action-gh-release@v0.1.14
       if: startsWith(github.ref, 'refs/tags/')
       with:
-        files: ldid_${{ env.OS }}_${{ matrix.arch }}
-
-  build-freebsd:
-    runs-on: ubuntu-22.04
-    strategy:
-      matrix:
-        arch:
-          - x86_64
-    env:
-      TRIPLE: x86_64-pc-freebsd
-    steps:
-      - uses: actions/checkout@v3
-      - name: cache files
-        uses: actions/cache@v3
-        with:
-          path: |
-            ~/.ccache
-            ~/dep_src
-          key: build-freebsd-${{ env.GITHUB_SHA }}
-          restore-keys: |
-            build-freebsd-
-      - name: setup environment
-        run: |
-          export DOWNLOAD_PATH=${HOME}/dep_src
-          export DEP_PATH=${HOME}/build
-          export ROOT=${HOME}/root
-          mkdir -p ${DOWNLOAD_PATH} ${DEP_PATH} ${ROOT}
-          echo "DOWNLOAD_PATH=${DOWNLOAD_PATH}" >> $GITHUB_ENV
-          echo "DEP_PATH=${DEP_PATH}" >> $GITHUB_ENV
-          echo "ROOT=${ROOT}" >> $GITHUB_ENV
-          echo "LDID_VERSION=$(echo "$(git describe --tags --abbrev=0)")" >> $GITHUB_ENV
-      - name: setup toolchain
-        run: |
-          sudo apt-get update && sudo apt-get install -y ccache clang-14 build-essential lld llvm-14
-          wget -q -nc -P ${DOWNLOAD_PATH} https://ftp.freebsd.org/pub/FreeBSD/releases/amd64/13.1-RELEASE/base.txz
-          tar xJf ${DOWNLOAD_PATH}/base.txz -C ${ROOT}
-          chmod -R 755 ${ROOT}
-          echo "CC=ccache clang -target ${TRIPLE}" >> $GITHUB_ENV
-          echo "CXX=ccache clang++ -target ${TRIPLE}" >> $GITHUB_ENV
-          echo "CFLAGS=-Os -ffunction-sections -flto -fdata-sections -static --sysroot=${ROOT} -I${ROOT}/usr/include/c++/v1" >> $GITHUB_ENV
-          echo "CXXFLAGS=-Os -ffunction-sections -flto -fdata-sections -static --sysroot=${ROOT} -I${ROOT}/usr/include/c++/v1" >> $GITHUB_ENV
-          echo "LDFLAGS=-Os -ffunction-sections -flto -fdata-sections -static --sysroot=${ROOT} -fuse-ld=lld -stdlib=libc++" >> $GITHUB_ENV
-          echo "LIBRARY_PATH=${LIBRARY_PATH}:${ROOT}/usr/lib/" >> $GITHUB_ENV
-      - name: build libplist
-        run: |
-          wget -q -nc -P ${DOWNLOAD_PATH} https://github.com/libimobiledevice/libplist/releases/download/${LIBPLIST_VERSION}/libplist-${LIBPLIST_VERSION}.tar.bz2
-          tar xf ${DOWNLOAD_PATH}/libplist-${LIBPLIST_VERSION}.tar.bz2 -C ${DEP_PATH}
-          cd ${DEP_PATH}/libplist-${LIBPLIST_VERSION}
-          ./configure --host=${TRIPLE} --prefix=/usr --without-cython --enable-static --disable-shared || cat config.log
-          make -j$(nproc)
-          echo "LIBPLIST_INCLUDES=-I${DEP_PATH}/libplist-${LIBPLIST_VERSION}/include" >> $GITHUB_ENV
-          echo "LIBPLIST_LIBS=${DEP_PATH}/libplist-${LIBPLIST_VERSION}/src/.libs/libplist-2.0.a" >> $GITHUB_ENV
-      - name: build openssl
-        run: |
-          wget -q -nc -P ${DOWNLOAD_PATH} https://www.openssl.org/source/openssl-${OPENSSL_VERSION}.tar.gz
-          tar xf ${DOWNLOAD_PATH}/openssl-${OPENSSL_VERSION}.tar.gz -C ${DEP_PATH}
-          cd ${DEP_PATH}/openssl-${OPENSSL_VERSION}
-          ./config --prefix=/usr --libdir=/usr/lib --openssldir=/etc/ssl -static enable-fips enable-capieng no-module enable-ktls no-hw no-zlib \
-               no-async no-comp no-idea no-mdc2 no-rc5 no-ec2m no-sm2 no-sm4 no-ssl3 no-seed no-weak-ssl-ciphers BSD-generic64
-          make -j$(nproc) build_generated libcrypto.a
-          echo "LIBCRYPTO_INCLUDES=${CXXFLAGS} -I${DEP_PATH}/openssl-${OPENSSL_VERSION}/include" >> $GITHUB_ENV
-          echo "LIBCRYPTO_LIBS=${DEP_PATH}/openssl-${OPENSSL_VERSION}/libcrypto.a" >> $GITHUB_ENV
-      - name: build
-        run: |
-          make -j$(nproc) \
-            CXXFLAGS="-Wextra ${CXXFLAGS}" \
-            LDFLAGS="-static -std=c++11 ${LDFLAGS}"
-          llvm-strip-14 ldid
-          mv ldid ldid_freebsd_x86_64
-      - uses: actions/upload-artifact@v3
-        with:
-          name: ldid_freebsd_x86_64
-          path: ldid_freebsd_x86_64
-      - name: Upload Release Asset FreeBSD x86_64
-        uses: softprops/action-gh-release@v0.1.14
-        if: startsWith(github.ref, 'refs/tags/')
-        with:
-          files: ldid_freebsd_x86_64
+        name: ldid_${{ env.OS }}_${{ matrix.arch }}
+        files: ldid
