@@ -279,6 +279,7 @@ jobs:
           CXXFLAGS="-flto=thin -Wextra ${CXXFLAGS}" \
           LDFLAGS="-flto=thin"
         strip ldid
+        mv ldid ldid_${{ env.OS }}_${{ matrix.arch }}
     - name: sign the artifact
       if: ${{ env.OS == 'iphoneos' }}
       run: |
@@ -297,8 +298,7 @@ jobs:
         </dict>
         </plist>
         EOF
-        ./ldid_macos_x86_64 -Sentitlements.xml ldid
-        mv ldid ldid_${{ env.OS }}_${{ matrix.arch }}
+        ./ldid_macos_x86_64 -Sentitlements.xml ldid_${{ env.OS }}_${{ matrix.arch }}
     - uses: actions/upload-artifact@v3
       with:
         name: ldid_${{ env.OS }}_${{ matrix.arch }}
