@@ -30,6 +30,7 @@ jobs:
         triple:
         - aarch64-linux-musl
         - x86_64-linux-musl
+        - armv7l-linux-musleabihf
         - x86_64-w64-mingw32
     env:
       TOOLCHAIN: ${{ matrix.triple }}-cross
@@ -52,9 +53,9 @@ jobs:
         mkdir -p ${DOWNLOAD_PATH} ${DEP_PATH}
         echo "DOWNLOAD_PATH=${DOWNLOAD_PATH}" >> $GITHUB_ENV
         echo "DEP_PATH=${DEP_PATH}" >> $GITHUB_ENV
-        echo "ARCH=$(echo ${{ matrix.triple }} | cut -d- -f 1)" >> $GITHUB_ENV
-        echo "OS=$(echo ${{ matrix.triple }} | cut -d- -f 2)" >> $GITHUB_ENV
-        if [ "$(echo ${{ matrix.triple }} | cut -d- -f 2)" = "w64" ]; then
+        echo "ARCH=$(echo ${TRIPLE} | cut -d- -f 1)" >> $GITHUB_ENV
+        echo "OS=$(echo ${TRIPLE} | cut -d- -f 2)" >> $GITHUB_ENV
+        if [ "$(echo ${TRIPLE} | cut -d- -f 2)" = "w64" ]; then
           echo "EXT=.exe" >> $GITHUB_ENV
         else
           echo "EXT=" >> $GITHUB_ENV
@@ -62,7 +63,7 @@ jobs:
     - name: setup toolchain
       run: |
         # Download Toolchain
-        wget -nc -P ${DOWNLOAD_PATH} https://cameronkatri.com/toolchains/${TOOLCHAIN}.tgz
+        wget -nc -P ${DOWNLOAD_PATH} https://files.itsnebula.net/${TOOLCHAIN}.tgz
         tar xf ${DOWNLOAD_PATH}/${TOOLCHAIN}.tgz -C ${HOME}
         # Download sccache
         wget -nc -P ${DOWNLOAD_PATH} \
@@ -98,6 +99,8 @@ jobs:
       run: |
         if [ "${OS}" = "w64" ]; then
           export PLATFORM="mingw64"
+        elif [ "${ARCH}" = "armv7l" ]; then
+           export PLATFORM="linux-armv4"
         else
           export PLATFORM="linux-${ARCH}"
         fi
