@@ -163,21 +163,30 @@ jobs:
     runs-on: macos-12
     strategy:
       matrix:
-        arch:
-        - x86_64
-        - arm64
+        include:
+          - arch: x86_64
+            os: macosx
+          - arch: arm64
+            os: macosx
+          - arch: arm64
+            os: iphoneos
     env:
       ARCH: ${{ matrix.arch }}
+      OS: ${{ matrix.os }}
     steps:
     - uses: actions/checkout@v3
+      with:
+        submodules: recursive
+
     - uses: actions/cache@v3
       with:
         path: |
           ~/Library/Caches/Mozilla.sccache
           ~/dep_src
-        key: build-macos-${{ matrix.arch }}-${ { env.GITHUB_SHA } }
+        key: build-${{ matrix.os }}-${{ matrix.arch }}-${ { env.GITHUB_SHA } }
         restore-keys: |
-          build-macos-${{ matrix.arch }}-
+          build-${{ matrix.os }}-${{ matrix.arch }}-
+
     - name: setup environment
       run: |
         export DOWNLOAD_PATH=${HOME}/dep_src
@@ -185,24 +194,37 @@ jobs:
         mkdir -p ${DOWNLOAD_PATH} ${DEP_PATH}
         echo "DOWNLOAD_PATH=${DOWNLOAD_PATH}" >> $GITHUB_ENV
         echo "DEP_PATH=${DEP_PATH}" >> $GITHUB_ENV
+
         if [ "${ARCH}" = "arm64" ]; then
           echo "HOST_ARCH=aarch64" >> $GITHUB_ENV
         else
           echo "HOST_ARCH=${ARCH}" >> $GITHUB_ENV
         fi
+        echo "SDK=$(xcrun -sdk ${OS} --show-sdk-path)" >> $GITHUB_ENV
+
     - name: setup toolchain
       run: |
         brew install libtool autoconf automake
+
         # Download sccache
         wget -nc -P ${DOWNLOAD_PATH} \
           https://github.com/mozilla/sccache/releases/download/v${SCCACHE_VERSION}/sccache-v${SCCACHE_VERSION}-x86_64-apple-darwin.tar.gz
         tar xf ${DOWNLOAD_PATH}/sccache-v${SCCACHE_VERSION}-x86_64-apple-darwin.tar.gz -C ${HOME}
         chmod +x ${HOME}/sccache-v${SCCACHE_VERSION}-x86_64-apple-darwin/sccache
+
         echo "${HOME}/sccache-v${SCCACHE_VERSION}-x86_64-apple-darwin" >> $GITHUB_PATH
-        echo "CC=sccache clang -arch ${ARCH} -mmacosx-version-min=10.13" >> $GITHUB_ENV
-        echo "CXX=sccache clang++ -arch ${ARCH} -mmacosx-version-min=10.13" >> $GITHUB_ENV
+        CC="sccache clang -arch ${ARCH} -isysroot ${SDK}"
+        CXX="sccache clang++ -arch ${ARCH} -isysroot ${SDK}"
+        if [ "${OS}" = "macosx" ]; then
+          echo "CC=${CC} -mmacosx-version-min=10.13" >> $GITHUB_ENV
+          echo "CXX=${CXX} -mmacosx-version-min=10.13" >> $GITHUB_ENV
+        else
+          echo "CC=${CC} -miphoneos-version-min=10.0" >> $GITHUB_ENV
+          echo "CXX=${CXX} -miphoneos-version-min=10.0" >> $GITHUB_ENV
+        fi
         echo "CXXFLAGS=-Os" >> $GITHUB_ENV
         echo "CFLAGS=-Os" >> $GITHUB_ENV
+
     - name: build libplist
       run: |
         wget -nc -P ${DOWNLOAD_PATH} https://github.com/libimobiledevice/libplist/releases/download/${LIBPLIST_VERSION}/libplist-${LIBPLIST_VERSION}.tar.bz2
@@ -210,36 +232,41 @@ jobs:
         cd ${DEP_PATH}/libplist-${LIBPLIST_VERSION}
         ./configure --host=${HOST_ARCH}-apple-darwin --without-cython --enable-static --disable-shared
         make -j$(sysctl -n hw.ncpu)
+
         echo "LIBPLIST_INCLUDES=-I${DEP_PATH}/libplist-${LIBPLIST_VERSION}/include" >> $GITHUB_ENV
         echo "LIBPLIST_LIBS=${DEP_PATH}/libplist-${LIBPLIST_VERSION}/src/.libs/libplist-2.0.a" >> $GITHUB_ENV
+
     - name: build openssl
       run: |
         wget -nc -P ${DOWNLOAD_PATH} https://www.openssl.org/source/openssl-${OPENSSL_VERSION}.tar.gz
         tar xf ${DOWNLOAD_PATH}/openssl-${OPENSSL_VERSION}.tar.gz -C ${DEP_PATH}
         cd ${DEP_PATH}/openssl-${OPENSSL_VERSION}
-        ./Configure -static enable-fips enable-capieng no-module enable-ktls no-hw no-zlib \
+        ./config -static enable-fips enable-capieng no-module enable-ktls no-zlib \
                no-async no-comp no-idea no-mdc2 no-rc5 no-ec2m no-sm2 no-sm4 no-ssl3 no-seed no-weak-ssl-ciphers darwin64-${ARCH}-cc
         make -j$(sysctl -n hw.ncpu) build_generated libcrypto.a
+
         echo "LIBCRYPTO_INCLUDES=${CXXFLAGS} -I${DEP_PATH}/openssl-${OPENSSL_VERSION}/include" >> $GITHUB_ENV
         echo "LIBCRYPTO_LIBS=${DEP_PATH}/openssl-${OPENSSL_VERSION}/libcrypto.a" >> $GITHUB_ENV
+
     - name: build
       run: |
         make -j$(sysctl -n hw.ncpu) \
           CXXFLAGS="-flto=thin -Wextra ${CXXFLAGS}" \
           LDFLAGS="-flto=thin"
         strip ldid
-        mv ldid ldid_macos_${{ matrix.arch }}
+        mv ldid ldid_${{ env.OS }}_${{ matrix.arch }}
+        
     - uses: actions/upload-artifact@v3
       with:
-        name: ldid_macos_${{ matrix.arch }}
-        path: ldid_macos_${{ matrix.arch }}
+        name: ldid_${{ env.OS }}_${{ matrix.arch }}
+        path: ldid_${{ env.OS }}_${{ matrix.arch }}
 
     - name: Upload Release Asset macOS
       uses: softprops/action-gh-release@v0.1.14
       if: startsWith(github.ref, 'refs/tags/')
       with:
-        files: ldid_macos_${{ matrix.arch }}
-          
+        files: ldid_${{ env.OS }}_${{ matrix.arch }}
+
   build-freebsd:
     runs-on: ubuntu-22.04
     strategy:
