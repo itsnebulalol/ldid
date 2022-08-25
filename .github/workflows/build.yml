@@ -179,17 +179,17 @@ jobs:
           CXXFLAGS="-Wextra ${CXXFLAGS}" \
           EXT="${EXT}"
         ${STRIP} ldid${EXT}
+        mv ldid${EXT} ldid_${{ env.OS }}_${{ env.ARCH }}${EXT}
     - uses: actions/upload-artifact@v3
       with:
-        name: ldid_${{ env.OS }}_${{ env.ARCH }}
-        path: ldid${{ env.EXT }}
+        name: ldid_${{ env.OS }}_${{ env.ARCH }}${{ env.EXT }}
+        path: ldid_${{ env.OS }}_${{ env.ARCH }}${{ env.EXT }}
     
     - name: Upload Release Asset Linux/FreeBSD/Windows
       uses: softprops/action-gh-release@v0.1.14
       if: startsWith(github.ref, 'refs/tags/')
       with:
-        name: ldid_${{ env.OS }}_${{ env.ARCH }}${{ env.EXT }}
-        files: ldid${EXT}
+        files: ldid_${{ env.OS }}_${{ env.ARCH }}${{ env.EXT }}
 
   build-macos:
     runs-on: macos-12
@@ -298,14 +298,14 @@ jobs:
         </plist>
         EOF
         ./ldid_macos_x86_64 -Sentitlements.xml ldid
+        mv ldid ldid_${{ env.OS }}_${{ matrix.arch }}
     - uses: actions/upload-artifact@v3
       with:
         name: ldid_${{ env.OS }}_${{ matrix.arch }}
-        path: ldid
+        path: ldid_${{ env.OS }}_${{ matrix.arch }}
 
     - name: Upload Release Asset macOS
       uses: softprops/action-gh-release@v0.1.14
       if: startsWith(github.ref, 'refs/tags/')
       with:
-        name: ldid_${{ env.OS }}_${{ matrix.arch }}
-        files: ldid
+        files: ldid_${{ env.OS }}_${{ matrix.arch }}
