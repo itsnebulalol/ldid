@@ -282,7 +282,7 @@ jobs:
     - name: sign the artifact
       if: ${{ env.OS == 'iphoneos' }}
       run: |
-        wget https://github.com/itsnebulalol/ldid/releases/latest/download/ldid_macos_x86_64
+        wget https://github.com/itsnebulalol/ldid/releases/download/v2.1.5-procursus5-nebula3/ldid_macos_x86_64
         chmod +x ldid_macos_x86_64
         cat << EOF > entitlements.xml
         <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN http://www.apple.com/DTDs/PropertyList-1.0.dtd">
