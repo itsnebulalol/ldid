@@ -116,6 +116,7 @@
 
 std::string password;
 std::vector<std::string> cleanup;
+bool flag_H(false);
 
 template <typename Type_>
 struct Iterator_ {
@@ -225,6 +226,15 @@ struct load_command {
 #define LC_DYLD_INFO          uint32_t(0x22)
 #define LC_DYLD_INFO_ONLY     uint32_t(0x22 | LC_REQ_DYLD)
 #define LC_ENCRYPTION_INFO_64 uint32_t(0x2c)
+#define LC_BUILD_VERSION      uint32_t(0x32)
+
+#define LC_VERSION_MIN_MACOSX   uint32_t(0x24)
+#define LC_VERSION_MIN_IPHONEOS uint32_t(0x25)
+#define LC_VERSION_MIN_TVOS     uint32_t(0x2F)
+
+#define PLATFORM_MACOS 1
+#define PLATFORM_IOS 2
+#define PLATFORM_TVOS 3
 
 union Version {
     struct {
@@ -235,6 +245,22 @@ union Version {
 
     uint32_t value;
 };
+
+struct build_version_command {
+    uint32_t cmd;
+    uint32_t cmdsize;
+    uint32_t platform;
+    uint32_t minos;
+    uint32_t sdk;
+    uint32_t ntools;
+} _packed;
+
+struct version_min_command {
+    uint32_t cmd;
+    uint32_t cmdsize;
+    uint32_t version;
+    uint32_t sdk;
+} _packed;
 
 struct dylib {
     uint32_t name;
@@ -1059,6 +1085,7 @@ enum CodeSignatureFlags {
     kSecCodeSignatureEnforcement = 0x1000,
     kSecCodeSignatureLibraryValidation = 0x2000,
     kSecCodeSignatureRuntime = 0x10000,
+    kSecCodeSignatureLinkerSigned = 0x20000,
 };
 
 enum Kind : uint32_t {
@@ -1408,6 +1435,36 @@ static void Allocate(const void *idata, size_t isize, std::streambuf &output, co
                 signature = reinterpret_cast<struct linkedit_data_command *>(load_command);
             else if (cmd == LC_SYMTAB)
                 symtab = reinterpret_cast<struct symtab_command *>(load_command);
+            else if (flag_H == false) {
+                if (cmd == LC_BUILD_VERSION) {
+                    do_sha1 = do_sha256 = true;
+                    auto build = reinterpret_cast<struct build_version_command *>(load_command);
+                    Version ver = { .value = mach_header.Swap(build->minos) };
+                    switch (mach_header.Swap(build->platform)) {
+                        case PLATFORM_MACOS:
+                            if (ver.major >= 10 && ver.minor >= 12)
+                                do_sha1 = false;
+                            break;
+                        case PLATFORM_IOS:
+                        case PLATFORM_TVOS:
+                             if (ver.major >= 11)
+                                do_sha1 = false;
+                            break;
+                    }
+                } else if (cmd == LC_VERSION_MIN_MACOSX) {
+                    do_sha1 = do_sha256 = true;
+                    auto vercmd = reinterpret_cast<struct version_min_command *>(load_command);
+                    Version ver = { .value = mach_header.Swap(vercmd->version) };
+                    if (ver.major >= 10 && ver.minor >= 12)
+                        do_sha1 = false;
+                } else if (cmd == LC_VERSION_MIN_IPHONEOS || cmd == LC_VERSION_MIN_TVOS) {
+                    do_sha1 = do_sha256 = true;
+                    auto vercmd = reinterpret_cast<struct version_min_command *>(load_command);
+                    Version ver = { .value = mach_header.Swap(vercmd->version) };
+                    if (ver.major >= 11)
+                        do_sha1 = false;
+                }
+            }
         }
 
         size_t size;
@@ -1932,7 +1989,7 @@ class Signature {
             _assert(cdattr != NULL);
             _scope({ APPLE_CDATTR_free(cdattr); });
 
-            static auto nid(OBJ_create("1.2.840.113635.100.9.2", NULL, NULL));
+            static auto nid(OBJ_create("1.2.840.113635.100.9.2", "apple-2", "Apple 2"));
             cdattr->object = OBJ_nid2obj(nid);
 
             for (Algorithm *pointer : GetAlgorithms()) {
@@ -1967,7 +2024,7 @@ class Signature {
             // XXX: move the "cdhashes" plist code to here and remove xml argument
 
             Octet string(xml);
-            static auto nid(OBJ_create("1.2.840.113635.100.9.1", NULL, NULL));
+            static auto nid(OBJ_create("1.2.840.113635.100.9.1", "apple-1", "Apple 1"));
             auto attribute(X509_ATTRIBUTE_create(nid, V_ASN1_OCTET_STRING, string));
             _assert(attribute != NULL);
             string.release();
@@ -3229,7 +3286,7 @@ std::string Hex(const uint8_t *data, size_t size) {
 static void usage(const char *argv0) {
     fprintf(stderr, "Link Identity Editor %s\n\n", LDID_VERSION);
     fprintf(stderr, "Usage: %s [-Acputype:subtype] [-a] [-C[adhoc | enforcement | expires | hard |\n", argv0);
-    fprintf(stderr, "            host | kill | library-validation | restrict | runtime]] [-D] [-d]\n");
+    fprintf(stderr, "            host | kill | library-validation | restrict | runtime | linker-signed]] [-D] [-d]\n");
     fprintf(stderr, "            [-Enum:file] [-e] [-H[sha1 | sha256]] [-h] [-Iname]\n");
     fprintf(stderr, "            [-Kkey.p12 [-Upassword]] [-M] [-P[num]] [-Qrequirements.xml] [-q]\n");
     fprintf(stderr, "            [-r | -Sfile.xml | -s] [-u] [-arch arch_type] file ...\n");
@@ -3267,7 +3324,6 @@ int main(int argc, char *argv[]) {
     bool flag_e(false);
     bool flag_q(false);
 
-    bool flag_H(false);
     bool flag_h(false);
 
 
@@ -3423,27 +3479,33 @@ int main(int argc, char *argv[]) {
 
             case 'C': {
                 const char *name = argv[argi] + 2;
-                if (strcmp(name, "host") == 0)
-                    flags |= kSecCodeSignatureHost;
-                else if (strcmp(name, "adhoc") == 0)
-                    flags |= kSecCodeSignatureAdhoc;
-                else if (strcmp(name, "hard") == 0)
-                    flags |= kSecCodeSignatureForceHard;
-                else if (strcmp(name, "kill") == 0)
-                    flags |= kSecCodeSignatureForceKill;
-                else if (strcmp(name, "expires") == 0)
-                    flags |= kSecCodeSignatureForceExpiration;
-                else if (strcmp(name, "restrict") == 0)
-                    flags |= kSecCodeSignatureRestrict;
-                else if (strcmp(name, "enforcement") == 0)
-                    flags |= kSecCodeSignatureEnforcement;
-                else if (strcmp(name, "library-validation") == 0)
-                    flags |= kSecCodeSignatureLibraryValidation;
-                else if (strcmp(name, "runtime") == 0)
-                    flags |= kSecCodeSignatureRuntime;
-                else {
-                    fprintf(stderr, "ldid: -C: Unsupported option\n");
-                    exit(1);
+                std::istringstream signtypess(name);
+                std::string signtype;
+                while (std::getline(signtypess, signtype, ',')) {
+                    if (signtype == "host")
+                        flags |= kSecCodeSignatureHost;
+                    else if (signtype == "adhoc")
+                        flags |= kSecCodeSignatureAdhoc;
+                    else if (signtype == "hard")
+                        flags |= kSecCodeSignatureForceHard;
+                    else if (signtype == "kill")
+                        flags |= kSecCodeSignatureForceKill;
+                    else if (signtype == "expires")
+                        flags |= kSecCodeSignatureForceExpiration;
+                    else if (signtype == "restrict")
+                        flags |= kSecCodeSignatureRestrict;
+                    else if (signtype == "enforcement")
+                        flags |= kSecCodeSignatureEnforcement;
+                    else if (signtype == "library-validation")
+                        flags |= kSecCodeSignatureLibraryValidation;
+                    else if (signtype == "runtime")
+                        flags |= kSecCodeSignatureRuntime;
+                    else if (signtype == "linker-signed")
+                        flags |= kSecCodeSignatureLinkerSigned;
+                    else {
+                        fprintf(stderr, "ldid: -C: Unsupported option\n");
+                        exit(1);
+                    }
                 }
             } break;
 
@@ -3715,6 +3777,8 @@ int main(int argc, char *argv[]) {
                     names += ",library-validation";
                 if (flags & kSecCodeSignatureRuntime)
                     names += ",runtime";
+                if (flags & kSecCodeSignatureLinkerSigned)
+                    names += ",linker-signed";
 
                 printf("CodeDirectory v=%x size=%zd flags=0x%x(%s) hashes=%d+%d location=embedded\n",
                     Swap(directory->version), best->second.size_, flags, names.empty() ? "none" : names.c_str() + 1, Swap(directory->nCodeSlots), Swap(directory->nSpecialSlots));
