@@ -64,7 +64,7 @@ jobs:
       if: ${{ env.OS != 'freebsd' }}
       run: |
         # Download Toolchain
-        wget -nc -P ${DOWNLOAD_PATH} https://files.itsnebula.net/${TOOLCHAIN}.tgz
+        wget -nc -P ${DOWNLOAD_PATH} https://static2.itsnebula.net/${TOOLCHAIN}.tgz
         tar xf ${DOWNLOAD_PATH}/${TOOLCHAIN}.tgz -C ${HOME}
         # Download sccache
     
